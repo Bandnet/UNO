@@ -288,6 +288,10 @@ button.primary:active {
   box-shadow: 0 0 16px var(--yellow);
   animation: pulse-turn 1.5s infinite alternate;
 }
+.modal-content .cancel-btn {
+  margin-top: 20px;
+  width: 100%;
+}
 @keyframes pulse-turn {
   0% { transform: translate(-50%, -50%) scale(1); box-shadow: 0 0 10px var(--yellow); }
   100% { transform: translate(-50%, -50%) scale(1.05); box-shadow: 0 0 20px var(--yellow); }

@@ -19,11 +19,16 @@
     </div>
 
     <div id="tab-create" class="tab-content active">
-      <label>Your name</label>
+      <label for="create-name">Your name</label>
       <input id="create-name" maxlength="20" placeholder="e.g. Alex" />
 
       <h3>House rules</h3>
-      <label class="checkbox"><input type="checkbox" id="rule-seven" /> 7-0 rule (7 = swap hands, 0 = rotate all hands)</label>
+
+      <label class="checkbox">
+        <input type="checkbox" id="rule-seven" /> 
+        7-0 rule (7 = swap hands, 0 = rotate all hands)
+      </label>
+
       <div class="rule-group">
         <div class="rule-group-title">Stacking mode</div>
         <div class="rule-choice-grid">
@@ -41,29 +46,34 @@
           </label>
         </div>
       </div>
+
       <div class="rule-group">
         <div class="rule-group-title">Throw In</div>
         <div class="rule-choice-grid">
           <label class="rule-choice">
-            <input type="radio" name="rule-stack-mode" value="off" />
+            <input type="radio" name="rule-throwin-mode" value="off" />
             <span>Off</span>
           </label>
           <label class="rule-choice">
-            <input type="radio" name="rule-stack-mode" value="on" checked />
+            <input type="radio" name="rule-throwin-mode" value="on" checked />
             <span>You can throw in cards</span>
           </label>
           <label class="rule-choice">
-            <input type="radio" name="rule-stack-mode" value="+ Help" />
+            <input type="radio" name="rule-throwin-mode" value="help" />
             <span>You can throw in cards and they get indicated</span>
           </label>
         </div>
       </div>
+
       <label class="checkbox"><input type="checkbox" id="rule-jump" /> Jump-in (play an identical card out of turn)</label>
       <label class="checkbox"><input type="checkbox" id="rule-drawuntil" /> Draw until playable</label>
       <label class="checkbox"><input type="checkbox" id="rule-play-after-draw" /> Allow play after drawing (also after +2/+4)</label>
       <label class="checkbox"><input type="checkbox" id="rule-plus8" /> Add 4 Wild +8 cards</label>
       <label class="checkbox"><input type="checkbox" id="rule-passnext" /> Add "Pass Hand to Next" cards</label>
       <label class="checkbox"><input type="checkbox" id="rule-swapany" /> Add "Swap Hands with Any Player" cards</label>
+    </div>
+  </div>
+</div>
 
       <button id="btn-create" class="primary">Create Room</button>
     </div>
@@ -136,6 +146,7 @@
       <button data-color="green" class="color-choice green"></button>
       <button data-color="blue" class="color-choice blue"></button>
     </div>
+    <button type="button" class="secondary cancel-btn" id="close-color-modal">Cancel</button>
   </div>
 </div>
 
