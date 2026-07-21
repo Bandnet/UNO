@@ -124,6 +124,7 @@ socket.on("state", (state) => {
   if (state.currentPlayerId !== myPlayerId) {
     canPassAfterDraw = false;
     setUnoArmed(false);
+    unoUsedThisTurn = false;
   }
   if (!state.started) {
     show("screen-waiting");
@@ -145,6 +146,7 @@ socket.on("events", (events) => {
     if (e.type === "turnAdvance") {
       canPassAfterDraw = false;
       setUnoArmed(false);
+      unoUsedThisTurn = false;
     }
     logEvent(e);
     animateEvent(e);
@@ -581,18 +583,33 @@ function startConfettiCelebration() {
 
 // ---------- UNO button ----------
 let unoArmed = false;
+let unoUsedThisTurn = false;
+
 $("#btn-uno").addEventListener("click", () => {
-  const me = latestState && (latestState.players || []).find((p) => p.id === myPlayerId);
+  if (unoUsedThisTurn) return;
+
+  const me = latestState && (latestState.players || []).find(
+    (p) => p.id === myPlayerId
+  );
+
   if (!me) return;
 
+  // Prevent using the button again until the next turn
+  unoUsedThisTurn = true;
+
   setUnoArmed(true);
+
   $("#btn-uno").style.filter = "brightness(1.4)";
   setTimeout(() => ($("#btn-uno").style.filter = ""), 400);
 
   if (me.handCount === 1) {
     socket.emit("callUno", {}, (res) => {
-      if (!res.ok) showInfo(res.error, "warn");
-      else showInfo("UNO called!", "success", 1600);
+      if (!res.ok) {
+        showInfo(res.error, "warn");
+        unoUsedThisTurn = false;
+      } else {
+        showInfo("UNO called!", "success", 1600);
+      }
     });
     return;
   }
@@ -601,14 +618,18 @@ $("#btn-uno").addEventListener("click", () => {
     showInfo("UNO armed for your next play.", "success", 1500);
   }
 
-  // Also usable to catch an opponent sitting at 1 card without having called it.
   const target = (latestState.players || []).find(
     (p) => p.id !== myPlayerId && p.handCount === 1
   );
+
   if (target) {
     socket.emit("catchUno", { targetId: target.id }, (res) => {
-      if (!res.ok) showInfo(res.error, "warn");
-      else showInfo(`Caught ${target.name} without UNO!`, "success", 1700);
+      if (!res.ok) {
+        showInfo(res.error, "warn");
+        unoUsedThisTurn = false;
+      } else {
+        showInfo(`Caught ${target.name} without UNO!`, "success", 1700);
+      }
     });
   }
 });
