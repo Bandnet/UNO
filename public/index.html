@@ -24,7 +24,12 @@
 
       <h3>House rules</h3>
       <label class="checkbox"><input type="checkbox" id="rule-seven" /> 7-0 rule (7 = swap hands, 0 = rotate all hands)</label>
-      <label class="checkbox"><input type="checkbox" id="rule-stack" /> Stacking (+2 on +2, +4 on +4/+2)</label>
+      <label for="rule-stack-mode">Stacking mode</label>
+      <select id="rule-stack-mode">
+        <option value="off">Off</option>
+        <option value="loose" selected>Loose stacking (+2 on +2, +4 on +4/+2)</option>
+        <option value="strict">Strict stacking (+2 on +2, +4 on +4 only)</option>
+      </select>
       <label class="checkbox"><input type="checkbox" id="rule-jump" /> Jump-in (play an identical card out of turn)</label>
       <label class="checkbox"><input type="checkbox" id="rule-drawuntil" /> Draw until playable</label>
 
@@ -54,7 +59,8 @@
 </div>
 
 <div id="screen-game" class="screen hidden">
-  <div class="table">
+  <div class="table" id="game-table">
+    <div id="fx-layer" aria-hidden="true"></div>
     <div class="opponents" id="opponents"></div>
 
     <div class="center">

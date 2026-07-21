@@ -6,6 +6,16 @@ const { buildDeck, shuffle } = require("./deck");
 const MAX_PLAYERS = 10;
 const MIN_PLAYERS = 2;
 
+function normalizeStackingMode(rules) {
+  if (rules && typeof rules.stackingMode === "string") {
+    if (rules.stackingMode === "off" || rules.stackingMode === "loose" || rules.stackingMode === "strict") {
+      return rules.stackingMode;
+    }
+  }
+  if (rules && rules.stacking) return "loose";
+  return "off";
+}
+
 class Room {
   constructor(code, hostName, rules) {
     this.code = code;
@@ -23,12 +33,15 @@ class Room {
     this.rules = Object.assign(
       {
         sevenORule: false, // 7 = swap hands, 0 = rotate all hands
-        stacking: false, // allow stacking +2 on +2, +4 on +4/+2
+        stackingMode: "off", // off | loose | strict
+        stacking: false, // legacy boolean, kept for compatibility
         jumpIn: false, // play an exact match out of turn
         drawUntilPlayable: false, // must keep drawing until you can play (off = draw one, then pass)
       },
       rules || {}
     );
+    this.rules.stackingMode = normalizeStackingMode(this.rules);
+    this.rules.stacking = this.rules.stackingMode !== "off";
     this.addPlayer(hostName, null, true);
   }
 
@@ -116,15 +129,21 @@ class Room {
 
   canPlay(card) {
     const top = this.topCard();
+    const stackingMode = this.rules.stackingMode;
     if (card.type === "wild" || card.type === "wild4") {
-      if (this.drawStack > 0 && this.rules.stacking) {
-        return card.type === "wild4"; // only wild4 stacks on a draw pile
+      if (this.drawStack > 0 && stackingMode !== "off") {
+        if (stackingMode === "loose") return card.type === "wild4"; // only wild4 stacks on a draw pile
+        return card.type === top.type && card.type === "wild4";
       }
       return true;
     }
-    if (this.drawStack > 0 && this.rules.stacking) {
-      // Must match the stacking chain: draw2 on draw2, wild4 on anything drawy
-      return card.type === "draw2" || card.type === "wild4";
+    if (this.drawStack > 0 && stackingMode !== "off") {
+      if (stackingMode === "loose") {
+        // Loose stacking: draw2 on draw2, wild4 on any draw pile.
+        return card.type === "draw2" || card.type === "wild4";
+      }
+      // Strict stacking: draw2 only on draw2, wild4 only on wild4.
+      return card.type === top.type && (card.type === "draw2" || card.type === "wild4");
     }
     if (card.color === this.currentColor) return true;
     if (card.type === "number" && top.type === "number") return card.value === top.value;
@@ -145,6 +164,11 @@ class Room {
     const cardIdx = player.hand.findIndex((c) => c.id === cardId);
     if (cardIdx === -1) throw new Error("Card not in hand");
     const card = player.hand[cardIdx];
+    const chosenColor = card.color || options.chosenColor;
+
+    if ((card.type === "wild" || card.type === "wild4") && !chosenColor) {
+      throw new Error("Must choose a color for a wild card");
+    }
 
     if (!isMyTurn) {
       if (!this.rules.jumpIn) throw new Error("Not your turn");
@@ -160,10 +184,7 @@ class Room {
     // Remove from hand, place on discard.
     player.hand.splice(cardIdx, 1);
     this.discard.push(card);
-    this.currentColor = card.color || options.chosenColor;
-    if ((card.type === "wild" || card.type === "wild4") && !this.currentColor) {
-      throw new Error("Must choose a color for a wild card");
-    }
+    this.currentColor = chosenColor;
 
     const events = [{ type: "played", playerId, card }];
 

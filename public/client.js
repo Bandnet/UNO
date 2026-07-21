@@ -4,6 +4,7 @@ let myPlayerId = null;
 let roomCode = null;
 let latestState = null;
 let pendingCardId = null; // card awaiting a color choice or swap target
+let pendingPlaySourceRect = null;
 
 const $ = (sel) => document.querySelector(sel);
 const show = (id) => document.querySelectorAll(".screen").forEach((s) => s.classList.toggle("hidden", s.id !== id));
@@ -23,7 +24,7 @@ $("#btn-create").addEventListener("click", () => {
   const name = $("#create-name").value.trim() || "Host";
   const rules = {
     sevenORule: $("#rule-seven").checked,
-    stacking: $("#rule-stack").checked,
+    stackingMode: $("#rule-stack-mode").value,
     jumpIn: $("#rule-jump").checked,
     drawUntilPlayable: $("#rule-drawuntil").checked,
   };
@@ -99,7 +100,10 @@ socket.on("state", (state) => {
 });
 
 socket.on("events", (events) => {
-  for (const e of events) logEvent(e);
+  for (const e of events) {
+    logEvent(e);
+    animateEvent(e);
+  }
 });
 
 socket.on("chat", ({ name, text }) => {
@@ -111,6 +115,10 @@ socket.on("chat", ({ name, text }) => {
 
 $("#chat-send").addEventListener("click", sendChat);
 $("#chat-text").addEventListener("keydown", (e) => { if (e.key === "Enter") sendChat(); });
+
+window.addEventListener("resize", () => {
+  if (latestState && latestState.started) renderGame(latestState);
+});
 function sendChat() {
   const text = $("#chat-text").value.trim();
   if (!text) return;
@@ -175,16 +183,25 @@ function cardInnerHtml(card) {
 function renderGame(state) {
   const me = state.players.find((p) => p.id === myPlayerId);
   if (!me) return;
+  const isDesktop = window.innerWidth > 900;
+  const handArea = document.querySelector(".hand-area");
+  if (handArea) handArea.classList.toggle("my-turn", state.currentPlayerId === myPlayerId);
 
-  // Opponents
-  const others = state.players.filter((p) => p.id !== myPlayerId);
+  // Opponents sit around the table in turn order, starting with the next player.
+  const others = orderedOpponents(state.players, myPlayerId);
+  const opponentBounds = $("#opponents").getBoundingClientRect();
+  const seatPositions = isDesktop ? computeSeatPositions(others.length, opponentBounds) : [];
   $("#opponents").innerHTML = others
-    .map((p) => `
-      <div class="opponent ${p.id === state.currentPlayerId ? "active-turn" : ""} ${p.connected ? "" : "disconnected"}">
+    .map((p, idx) => {
+      const pos = isDesktop ? seatPositions[idx] : null;
+      const style = pos ? `style="left:${pos.left}px;top:${pos.top}px;"` : "";
+      return `
+      <div class="opponent ${p.id === state.currentPlayerId ? "active-turn" : ""} ${p.connected ? "" : "disconnected"}" data-player-id="${p.id}" ${style}>
         <div class="oname">${escapeHtml(p.name)}</div>
         <div class="ocount">${p.handCount} card${p.handCount === 1 ? "" : "s"}</div>
       </div>
-    `)
+    `;
+    })
     .join("");
 
   // Discard pile
@@ -219,6 +236,31 @@ function renderGame(state) {
   $("#btn-pass").classList.toggle("hidden", true);
 }
 
+function orderedOpponents(players, myPlayerId) {
+  const myIndex = players.findIndex((p) => p.id === myPlayerId);
+  if (myIndex === -1) return players.filter((p) => p.id !== myPlayerId);
+  return players.slice(myIndex + 1).concat(players.slice(0, myIndex)).filter((p) => p.id !== myPlayerId);
+}
+
+function computeSeatPositions(count, bounds) {
+  if (!count || !bounds.width || !bounds.height) return [];
+  const centerX = bounds.width / 2;
+  const centerY = bounds.height * 0.38;
+  const radiusX = Math.max(160, Math.min(bounds.width * 0.36, 280));
+  const radiusY = Math.max(120, Math.min(bounds.height * 0.23, 180));
+  const start = -Math.PI / 2;
+  const step = (Math.PI * 2) / count;
+  const out = [];
+  for (let i = 0; i < count; i++) {
+    const angle = start + step * i;
+    out.push({
+      left: centerX + Math.cos(angle) * radiusX,
+      top: centerY + Math.sin(angle) * radiusY,
+    });
+  }
+  return out;
+}
+
 function colorHex(c) {
   return { red: "#e6342b", yellow: "#f2c229", green: "#2fa84f", blue: "#2b6fe6" }[c] || "#888";
 }
@@ -226,12 +268,17 @@ function colorHex(c) {
 // Best-effort local playability check so unplayable cards are visibly dimmed.
 // The server is the source of truth and re-validates every move.
 function canPlayLocally(card, state) {
+  const stackingMode = (state.rules && state.rules.stackingMode) || (state.rules && state.rules.stacking ? "loose" : "off");
   if (card.type === "wild" || card.type === "wild4") {
-    if (state.drawStack > 0 && state.rules.stacking) return card.type === "wild4";
-    return true;
+   if (state.drawStack > 0 && stackingMode !== "off") {
+     if (stackingMode === "loose") return card.type === "wild4";
+     return state.topCard && card.type === state.topCard.type && card.type === "wild4";
+   }
+   return true;
   }
-  if (state.drawStack > 0 && state.rules.stacking) {
-    return card.type === "draw2" || card.type === "wild4";
+  if (state.drawStack > 0 && stackingMode !== "off") {
+   if (stackingMode === "loose") return card.type === "draw2" || card.type === "wild4";
+   return state.topCard && card.type === state.topCard.type && (card.type === "draw2" || card.type === "wild4");
   }
   const top = state.topCard;
   if (card.color === state.currentColor) return true;
@@ -253,6 +300,7 @@ function onPlayCardClick(cardId, state) {
   const card = (me.hand || []).find((c) => c.id === cardId);
   if (!card) return;
   if (!isMyTurn && !state.rules.jumpIn) return;
+  rememberPendingPlay(cardId);
 
   if (card.type === "wild" || card.type === "wild4") {
     pendingCardId = cardId;
@@ -288,9 +336,97 @@ function submitPlay(cardId, options) {
   const me = latestState.players.find((p) => p.id === myPlayerId);
   const calledUno = me.hand.length === 2; // about to have exactly 1 left
   socket.emit("playCard", { cardId, ...options, calledUno: calledUno && unoArmed }, (res) => {
-    if (!res.ok) alert(res.error);
+    if (!res.ok) {
+      alert(res.error);
+      pendingPlaySourceRect = null;
+      pendingCardId = null;
+    }
     unoArmed = false;
   });
+}
+
+function rememberPendingPlay(cardId) {
+  const el = document.querySelector(`#hand .card[data-card-id="${cardId}"]`);
+  pendingPlaySourceRect = el ? el.getBoundingClientRect() : null;
+}
+
+function animateEvent(e) {
+  if (!latestState || !latestState.started) return;
+  if (!window.requestAnimationFrame) return;
+
+  if (e.type === "played") {
+    const sourceRect = e.playerId === myPlayerId && pendingPlaySourceRect
+      ? pendingPlaySourceRect
+      : getPlayerSeatRect(e.playerId) || $("#deck-pile").getBoundingClientRect();
+    const targetRect = $("#discard-pile").getBoundingClientRect();
+    animateFlyingCard(e.card, sourceRect, targetRect);
+    pendingPlaySourceRect = null;
+    pendingCardId = null;
+    return;
+  }
+
+  if (e.type === "draw") {
+    const sourceRect = $("#deck-pile").getBoundingClientRect();
+    const targetRect = e.playerId === myPlayerId
+      ? getMyHandCardRect()
+      : getPlayerSeatRect(e.playerId);
+    if (targetRect) animateBackCard(sourceRect, targetRect);
+  }
+}
+
+function getPlayerSeatRect(playerId) {
+  const el = document.querySelector(`.opponent[data-player-id="${playerId}"]`);
+  return el ? el.getBoundingClientRect() : null;
+}
+
+function getMyHandCardRect() {
+  const card = document.querySelector("#hand .card:last-child");
+  return card ? card.getBoundingClientRect() : document.querySelector(".hand-area").getBoundingClientRect();
+}
+
+function animateFlyingCard(card, fromRect, toRect) {
+  if (!fromRect || !toRect) return;
+  animateCardElement(buildFxCard(card, false), fromRect, toRect);
+}
+
+function animateBackCard(fromRect, toRect) {
+  if (!fromRect || !toRect) return;
+  animateCardElement(buildFxCard(null, true), fromRect, toRect);
+}
+
+function animateCardElement(el, fromRect, toRect) {
+  const layer = $("#fx-layer");
+  if (!layer) return;
+  const layerRect = layer.getBoundingClientRect();
+  const fromX = fromRect.left + fromRect.width / 2 - layerRect.left;
+  const fromY = fromRect.top + fromRect.height / 2 - layerRect.top;
+  const toX = toRect.left + toRect.width / 2 - layerRect.left;
+  const toY = toRect.top + toRect.height / 2 - layerRect.top;
+  const width = 72;
+  const height = 108;
+
+  el.style.left = `${fromX - width / 2}px`;
+  el.style.top = `${fromY - height / 2}px`;
+  el.style.width = `${width}px`;
+  el.style.height = `${height}px`;
+  el.style.transform = "translate(0, 0) scale(1)";
+  layer.appendChild(el);
+
+  requestAnimationFrame(() => {
+    el.style.transform = `translate(${toX - fromX}px, ${toY - fromY}px) scale(0.92)`;
+    el.style.opacity = "0.15";
+  });
+
+  setTimeout(() => {
+    el.remove();
+  }, 520);
+}
+
+function buildFxCard(card, faceDown) {
+  const el = document.createElement("div");
+  el.className = `fx-card ${faceDown ? "back" : cardClass(card)}`;
+  el.innerHTML = faceDown ? "" : cardInnerHtml(card);
+  return el;
 }
 
 // ---------- UNO button ----------

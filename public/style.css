@@ -131,6 +131,20 @@ input[type="text"]:focus,
 input:not([type]):focus {
   border-color: var(--blue);
 }
+select {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid #383d4a;
+  background: #10121780;
+  color: var(--text);
+  font-size: 15px;
+  outline: none;
+  transition: border-color 0.2s ease;
+}
+select:focus {
+  border-color: var(--blue);
+}
 
 button.primary {
   width: 100%;
@@ -198,28 +212,36 @@ button.primary:active {
 }
 .table {
   flex: 1;
+  position: relative;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
   padding: 20px;
   min-height: 100vh;
+  overflow: hidden;
 }
 
 /* Opponents */
 .opponents {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  justify-content: center;
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
 }
 .opponent {
   background: var(--panel);
   padding: 10px 16px;
   border-radius: 12px;
   text-align: center;
-  min-width: 100px;
+  min-width: 112px;
   border: 2px solid var(--panel-border);
   transition: all 0.3s ease;
+  pointer-events: auto;
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.25);
 }
 .opponent.active-turn {
   border-color: var(--yellow);
@@ -227,8 +249,8 @@ button.primary:active {
   animation: pulse-turn 1.5s infinite alternate;
 }
 @keyframes pulse-turn {
-  0% { transform: scale(1); box-shadow: 0 0 10px var(--yellow); }
-  100% { transform: scale(1.05); box-shadow: 0 0 20px var(--yellow); }
+  0% { transform: translate(-50%, -50%) scale(1); box-shadow: 0 0 10px var(--yellow); }
+  100% { transform: translate(-50%, -50%) scale(1.05); box-shadow: 0 0 20px var(--yellow); }
 }
 .opponent .oname {
   font-weight: 700;
@@ -251,6 +273,8 @@ button.primary:active {
   justify-content: center;
   gap: 14px;
   flex: 1;
+  position: relative;
+  z-index: 2;
 }
 .pile {
   position: relative;
@@ -277,6 +301,13 @@ button.primary:active {
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 20px;
   backdrop-filter: blur(4px);
+}
+
+#fx-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 4;
 }
 
 /* ---------- Classic UNO Cards Styling ---------- */
@@ -361,6 +392,8 @@ button.primary:active {
   padding: 12px;
   border-radius: 16px;
   transition: all 0.3s ease;
+  position: relative;
+  z-index: 2;
 }
 
 /* Class to apply via JS when it is the local player's turn */
@@ -402,12 +435,12 @@ button.primary:active {
 
 /* Clear distinction for UNPLAYABLE cards */
 .hand .card.unplayable {
-  opacity: 0.35;
-  filter: grayscale(85%) brightness(0.7);
+  opacity: 0.6;
+  filter: brightness(0.85) saturate(0.85);
   cursor: not-allowed;
   transform: scale(0.92);
   box-shadow: none;
-  border-color: #888888;
+  border-color: rgba(255, 255, 255, 0.65);
 }
 .hand .card.unplayable:hover {
   transform: scale(0.92);
@@ -563,13 +596,90 @@ button.primary:active {
   background: var(--blue);
 }
 
+.fx-card {
+  position: absolute;
+  width: 72px;
+  height: 108px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 900;
+  font-size: 28px;
+  color: white;
+  border: 4px solid #ffffff;
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.55);
+  z-index: 6;
+  transition: transform 0.45s cubic-bezier(0.18, 0.8, 0.2, 1), opacity 0.45s ease;
+}
+.fx-card::before {
+  content: "";
+  position: absolute;
+  width: 85%;
+  height: 60%;
+  border-radius: 50% / 40%;
+  background: rgba(255, 255, 255, 0.15);
+  transform: rotate(-25deg);
+  pointer-events: none;
+}
+.fx-card.back {
+  background: repeating-linear-gradient(45deg, #1f1f28, #1f1f28 8px, #2c2d3b 8px, #2c2d3b 16px);
+}
+.fx-card.red { background: var(--red); }
+.fx-card.yellow { background: var(--yellow); color: #111; }
+.fx-card.green { background: var(--green); }
+.fx-card.blue { background: var(--blue); }
+.fx-card.wildcard { background: conic-gradient(var(--red), var(--yellow), var(--green), var(--blue), var(--red)); }
+.fx-card .label {
+  font-size: 11px;
+  position: absolute;
+  bottom: 4px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  z-index: 1;
+}
+
 @media (max-width: 900px) {
   #screen-game {
     flex-direction: column;
+  }
+  .table {
+    min-height: auto;
+    overflow: visible;
+  }
+  .opponents {
+    position: static;
+    inset: auto;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    justify-content: center;
+    pointer-events: auto;
+    margin-bottom: 12px;
+  }
+  .opponent {
+    position: static;
+    left: auto;
+    top: auto;
+    transform: none;
+  }
+  .opponent.active-turn {
+    animation: pulse-turn-mobile 1.5s infinite alternate;
+  }
+  @keyframes pulse-turn-mobile {
+    0% { transform: scale(1); box-shadow: 0 0 10px var(--yellow); }
+    100% { transform: scale(1.05); box-shadow: 0 0 20px var(--yellow); }
+  }
+  #fx-layer {
+    display: none;
   }
   .side-panel {
     width: 100%;
     border-left: none;
     border-top: 1px solid var(--panel-border);
+  }
+  .center {
+    min-height: 320px;
   }
 }
