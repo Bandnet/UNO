@@ -266,7 +266,7 @@ button.primary:active {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  z-index: 1;
+  z-index: 3;
 }
 .opponent {
   background: var(--panel);

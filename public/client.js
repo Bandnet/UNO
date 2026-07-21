@@ -8,7 +8,6 @@ let pendingChosenColor = null;
 let pendingPlaySourceRect = null;
 let canPassAfterDraw = false;
 let infoTimer = null;
-let unoArmed = false;
 
 const $ = (sel) => document.querySelector(sel);
 const show = (id) => document.querySelectorAll(".screen").forEach((s) => s.classList.toggle("hidden", s.id !== id));
@@ -581,6 +580,7 @@ function startConfettiCelebration() {
 }
 
 // ---------- UNO button ----------
+let unoArmed = false;
 $("#btn-uno").addEventListener("click", () => {
   const me = latestState && (latestState.players || []).find((p) => p.id === myPlayerId);
   if (!me) return;
