@@ -115,6 +115,46 @@ label.checkbox input {
   accent-color: var(--blue);
 }
 
+.rule-group {
+  margin: 12px 0;
+  padding: 12px;
+  border-radius: 10px;
+  border: 1px solid #383d4a;
+  background: rgba(255, 255, 255, 0.03);
+}
+.rule-group-title {
+  font-size: 13px;
+  color: var(--muted);
+  margin-bottom: 8px;
+  font-weight: 700;
+}
+.rule-choice-grid {
+  display: grid;
+  gap: 8px;
+}
+.rule-choice {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid #383d4a;
+  background: rgba(255, 255, 255, 0.02);
+}
+.rule-choice input {
+  margin: 0;
+  accent-color: var(--blue);
+}
+.rule-choice span {
+  color: var(--text);
+  font-size: 13px;
+}
+.rule-choice input:checked + span {
+  color: #ffffff;
+  font-weight: 700;
+}
+
 input[type="text"],
 input:not([type]) {
   width: 100%;
@@ -275,6 +315,8 @@ button.primary:active {
   flex: 1;
   position: relative;
   z-index: 2;
+  padding-top: 50px;
+  padding-bottom: 30px;
 }
 .pile {
   position: relative;
@@ -640,6 +682,44 @@ button.primary:active {
   z-index: 1;
 }
 
+.confetti-layer {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 30;
+  overflow: hidden;
+}
+.confetti-credit {
+  position: absolute;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(20, 22, 28, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+  padding: 8px 16px;
+  font-weight: 700;
+  color: #fff;
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.35);
+}
+.confetti-piece {
+  position: absolute;
+  top: -20px;
+  width: 10px;
+  height: 16px;
+  border-radius: 2px;
+  opacity: 0.95;
+  animation: confetti-fall linear forwards;
+}
+@keyframes confetti-fall {
+  0% {
+    transform: translateY(-10px) rotate(0deg);
+  }
+  100% {
+    transform: translateY(110vh) rotate(620deg);
+  }
+}
+
 @media (max-width: 900px) {
   #screen-game {
     flex-direction: column;
@@ -681,5 +761,7 @@ button.primary:active {
   }
   .center {
     min-height: 320px;
+    padding-top: 12px;
+    padding-bottom: 12px;
   }
 }

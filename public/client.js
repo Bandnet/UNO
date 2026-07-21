@@ -5,6 +5,7 @@ let roomCode = null;
 let latestState = null;
 let pendingCardId = null; // card awaiting a color choice or swap target
 let pendingPlaySourceRect = null;
+let canPassAfterDraw = false;
 
 const $ = (sel) => document.querySelector(sel);
 const show = (id) => document.querySelectorAll(".screen").forEach((s) => s.classList.toggle("hidden", s.id !== id));
@@ -22,11 +23,13 @@ document.querySelectorAll(".tab-btn").forEach((btn) => {
 // ---------- Lobby: create / join ----------
 $("#btn-create").addEventListener("click", () => {
   const name = $("#create-name").value.trim() || "Host";
+  const stackingModeInput = document.querySelector('input[name="rule-stack-mode"]:checked');
   const rules = {
     sevenORule: $("#rule-seven").checked,
-    stackingMode: $("#rule-stack-mode").value,
+    stackingMode: stackingModeInput ? stackingModeInput.value : "loose",
     jumpIn: $("#rule-jump").checked,
     drawUntilPlayable: $("#rule-drawuntil").checked,
+    playAfterDraw: $("#rule-play-after-draw").checked,
   };
   socket.emit("createRoom", { name, rules }, (res) => {
     if (!res.ok) return ($("#lobby-error").textContent = res.error);
@@ -54,9 +57,17 @@ $("#btn-start").addEventListener("click", () => {
     if (!res.ok) alert(res.error);
   });
 });
+$("#btn-pass").addEventListener("click", () => {
+  socket.emit("passTurn", {}, (res) => {
+    if (!res.ok) alert(res.error);
+    canPassAfterDraw = false;
+  });
+});
 
 $("#btn-back-lobby").addEventListener("click", () => {
   clearSession();
+  const confetti = $("#confetti-layer");
+  if (confetti) confetti.classList.add("hidden");
   location.reload();
 });
 
@@ -87,6 +98,7 @@ function clearSession() {
 // ---------- Server state ----------
 socket.on("state", (state) => {
   latestState = state;
+  if (state.currentPlayerId !== myPlayerId) canPassAfterDraw = false;
   if (!state.started) {
     show("screen-waiting");
     $("#wait-code").textContent = state.code;
@@ -101,6 +113,12 @@ socket.on("state", (state) => {
 
 socket.on("events", (events) => {
   for (const e of events) {
+    if ((e.type === "canPlayAfterDraw" || e.type === "canPlayDrawn") && latestState && latestState.currentPlayerId === myPlayerId) {
+      canPassAfterDraw = true;
+    }
+    if (e.type === "turnAdvance") {
+      canPassAfterDraw = false;
+    }
     logEvent(e);
     animateEvent(e);
   }
@@ -148,6 +166,7 @@ function logEvent(e) {
   if (e.type === "win") {
     $("#win-text").textContent = nameOf(e.playerId) === myName() ? "You won! 🎉" : `${nameOf(e.playerId)} won the game.`;
     $("#win-modal").classList.remove("hidden");
+    startConfettiCelebration();
   }
 }
 
@@ -233,7 +252,7 @@ function renderGame(state) {
     el.addEventListener("click", () => onPlayCardClick(el.dataset.cardId, state));
   });
 
-  $("#btn-pass").classList.toggle("hidden", true);
+  $("#btn-pass").classList.toggle("hidden", !(canPassAfterDraw && isMyTurn));
 }
 
 function orderedOpponents(players, myPlayerId) {
@@ -245,11 +264,25 @@ function orderedOpponents(players, myPlayerId) {
 function computeSeatPositions(count, bounds) {
   if (!count || !bounds.width || !bounds.height) return [];
   const centerX = bounds.width / 2;
-  const centerY = bounds.height * 0.38;
-  const radiusX = Math.max(160, Math.min(bounds.width * 0.36, 280));
-  const radiusY = Math.max(120, Math.min(bounds.height * 0.23, 180));
-  const start = -Math.PI / 2;
-  const step = (Math.PI * 2) / count;
+
+  const layoutByCount = {
+    1: { arcDeg: 0, yCenter: 0.26, rx: 0, ry: 0 },
+    2: { arcDeg: 90, yCenter: 0.27, rx: 0.36, ry: 0.26 },
+    3: { arcDeg: 120, yCenter: 0.28, rx: 0.4, ry: 0.28 },
+    4: { arcDeg: 145, yCenter: 0.29, rx: 0.43, ry: 0.3 },
+    5: { arcDeg: 170, yCenter: 0.3, rx: 0.45, ry: 0.32 },
+    6: { arcDeg: 190, yCenter: 0.31, rx: 0.47, ry: 0.34 },
+    7: { arcDeg: 205, yCenter: 0.31, rx: 0.49, ry: 0.35 },
+    8: { arcDeg: 220, yCenter: 0.32, rx: 0.5, ry: 0.36 },
+    9: { arcDeg: 230, yCenter: 0.32, rx: 0.51, ry: 0.37 },
+  };
+  const cfg = layoutByCount[Math.min(count, 9)] || layoutByCount[9];
+  const centerY = bounds.height * cfg.yCenter;
+  const radiusX = cfg.rx ? Math.max(170, Math.min(bounds.width * cfg.rx, 390)) : 0;
+  const radiusY = cfg.ry ? Math.max(120, Math.min(bounds.height * cfg.ry, 280)) : 0;
+  const arc = (cfg.arcDeg * Math.PI) / 180;
+  const start = -Math.PI / 2 - arc / 2;
+  const step = count > 1 ? arc / (count - 1) : 0;
   const out = [];
   for (let i = 0; i < count; i++) {
     const angle = start + step * i;
@@ -340,6 +373,8 @@ function submitPlay(cardId, options) {
       alert(res.error);
       pendingPlaySourceRect = null;
       pendingCardId = null;
+    } else {
+      canPassAfterDraw = false;
     }
     unoArmed = false;
   });
@@ -427,6 +462,30 @@ function buildFxCard(card, faceDown) {
   el.className = `fx-card ${faceDown ? "back" : cardClass(card)}`;
   el.innerHTML = faceDown ? "" : cardInnerHtml(card);
   return el;
+}
+
+let confettiTimer = null;
+function startConfettiCelebration() {
+  const layer = $("#confetti-layer");
+  if (!layer) return;
+  layer.classList.remove("hidden");
+  layer.querySelectorAll(".confetti-piece").forEach((piece) => piece.remove());
+  const colors = ["#e6342b", "#f2c229", "#2fa84f", "#2b6fe6", "#ffffff"];
+  for (let i = 0; i < 140; i++) {
+    const piece = document.createElement("div");
+    piece.className = "confetti-piece";
+    piece.style.left = `${Math.random() * 100}%`;
+    piece.style.background = colors[Math.floor(Math.random() * colors.length)];
+    piece.style.animationDuration = `${2.6 + Math.random() * 2.1}s`;
+    piece.style.animationDelay = `${Math.random() * 0.8}s`;
+    piece.style.transform = `translateY(-10px) rotate(${Math.random() * 360}deg)`;
+    layer.appendChild(piece);
+  }
+  if (confettiTimer) clearTimeout(confettiTimer);
+  confettiTimer = setTimeout(() => {
+    layer.classList.add("hidden");
+    layer.querySelectorAll(".confetti-piece").forEach((piece) => piece.remove());
+  }, 6500);
 }
 
 // ---------- UNO button ----------

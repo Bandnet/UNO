@@ -37,11 +37,13 @@ class Room {
         stacking: false, // legacy boolean, kept for compatibility
         jumpIn: false, // play an exact match out of turn
         drawUntilPlayable: false, // must keep drawing until you can play (off = draw one, then pass)
+        playAfterDraw: false, // after drawing (including +2/+4), you may play instead of auto-pass
       },
       rules || {}
     );
     this.rules.stackingMode = normalizeStackingMode(this.rules);
     this.rules.stacking = this.rules.stackingMode !== "off";
+    this.drewThisTurn = false;
     this.addPlayer(hostName, null, true);
   }
 
@@ -79,6 +81,7 @@ class Room {
     this.currentIndex = 0;
     this.direction = 1;
     this.started = true;
+    this.drewThisTurn = false;
     this._applyStartCardEffect(first);
   }
 
@@ -191,6 +194,7 @@ class Room {
     // Win check
     if (player.hand.length === 0) {
       this.winner = playerId;
+      this.drewThisTurn = false;
       events.push({ type: "win", playerId });
       return events;
     }
@@ -266,6 +270,7 @@ class Room {
         break;
     }
 
+    this.drewThisTurn = false;
     return events;
   }
 
@@ -273,24 +278,43 @@ class Room {
     const player = this._requirePlayer(playerId);
     if (this.currentPlayer().id !== playerId) throw new Error("Not your turn");
     if (this.winner) throw new Error("Game already over");
+    if (this.drawStack === 0 && this.drewThisTurn && !this.rules.drawUntilPlayable) {
+      throw new Error("You already drew this turn");
+    }
 
     if (this.drawStack > 0) {
       const n = this.drawStack;
       player.hand.push(...this.draw(n));
       this.drawStack = 0;
-      this.currentIndex = this.nextIndex();
-      return [{ type: "draw", playerId, count: n }, { type: "turnAdvance" }];
+      const events = [{ type: "draw", playerId, count: n }];
+      if (this.rules.playAfterDraw && this._hasPlayableCard(player)) {
+        this.drewThisTurn = true;
+        events.push({ type: "canPlayAfterDraw", fromPenalty: true, count: n });
+      } else {
+        this.currentIndex = this.nextIndex();
+        this.drewThisTurn = false;
+        events.push({ type: "turnAdvance" });
+      }
+      return events;
     }
 
     const drawn = this.draw(1);
     player.hand.push(...drawn);
     const events = [{ type: "draw", playerId, count: 1 }];
-
-    if (this.rules.drawUntilPlayable && drawn.length && this.canPlay(drawn[0])) {
-      // Player may choose to play it immediately (client prompts); turn does not advance yet.
-      events.push({ type: "canPlayDrawn", card: drawn[0] });
+    const drawnPlayable = drawn.length && this.canPlay(drawn[0]);
+    const canPlayNow = this.rules.playAfterDraw && this._hasPlayableCard(player);
+    if ((this.rules.drawUntilPlayable && drawnPlayable) || canPlayNow) {
+      this.drewThisTurn = true;
+      if (this.rules.drawUntilPlayable && drawnPlayable) {
+        // Player may choose to play it immediately (client prompts); turn does not advance yet.
+        events.push({ type: "canPlayDrawn", card: drawn[0] });
+      }
+      if (canPlayNow) {
+        events.push({ type: "canPlayAfterDraw", fromPenalty: false, count: 1 });
+      }
     } else {
       this.currentIndex = this.nextIndex();
+      this.drewThisTurn = false;
       events.push({ type: "turnAdvance" });
     }
     return events;
@@ -299,7 +323,12 @@ class Room {
   passTurn(playerId) {
     if (this.currentPlayer().id !== playerId) throw new Error("Not your turn");
     this.currentIndex = this.nextIndex();
+    this.drewThisTurn = false;
     return [{ type: "turnAdvance" }];
+  }
+
+  _hasPlayableCard(player) {
+    return player.hand.some((card) => this.canPlay(card));
   }
 
   /** Catch a player who forgot to call UNO at 1 card. They draw 2 as a penalty. */

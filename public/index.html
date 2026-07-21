@@ -24,14 +24,26 @@
 
       <h3>House rules</h3>
       <label class="checkbox"><input type="checkbox" id="rule-seven" /> 7-0 rule (7 = swap hands, 0 = rotate all hands)</label>
-      <label for="rule-stack-mode">Stacking mode</label>
-      <select id="rule-stack-mode">
-        <option value="off">Off</option>
-        <option value="loose" selected>Loose stacking (+2 on +2, +4 on +4/+2)</option>
-        <option value="strict">Strict stacking (+2 on +2, +4 on +4 only)</option>
-      </select>
+      <div class="rule-group">
+        <div class="rule-group-title">Stacking mode</div>
+        <div class="rule-choice-grid">
+          <label class="rule-choice">
+            <input type="radio" name="rule-stack-mode" value="off" />
+            <span>Off</span>
+          </label>
+          <label class="rule-choice">
+            <input type="radio" name="rule-stack-mode" value="loose" checked />
+            <span>Loose (+2 on +2, +4 on +4/+2)</span>
+          </label>
+          <label class="rule-choice">
+            <input type="radio" name="rule-stack-mode" value="strict" />
+            <span>Strict (+2 on +2, +4 on +4 only)</span>
+          </label>
+        </div>
+      </div>
       <label class="checkbox"><input type="checkbox" id="rule-jump" /> Jump-in (play an identical card out of turn)</label>
       <label class="checkbox"><input type="checkbox" id="rule-drawuntil" /> Draw until playable</label>
+      <label class="checkbox"><input type="checkbox" id="rule-play-after-draw" /> Allow play after drawing (also after +2/+4)</label>
 
       <button id="btn-create" class="primary">Create Room</button>
     </div>
@@ -118,6 +130,10 @@
     <h2 id="win-text"></h2>
     <button id="btn-back-lobby" class="primary">Back to lobby</button>
   </div>
+</div>
+
+<div id="confetti-layer" class="confetti-layer hidden" aria-hidden="true">
+  <div class="confetti-credit">Confetti thanks to Fool 🎉</div>
 </div>
 
 <script src="/socket.io/socket.io.js"></script>
