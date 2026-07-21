@@ -124,7 +124,6 @@ socket.on("state", (state) => {
   if (state.currentPlayerId !== myPlayerId) {
     canPassAfterDraw = false;
     setUnoArmed(false);
-    unoUsedThisTurn = false;
   }
   if (!state.started) {
     show("screen-waiting");
@@ -431,6 +430,30 @@ function onPlayCardClick(cardId, state) {
   }
   submitPlay(cardId, {});
 }
+
+function cancelPendingPlay() {
+  pendingCardId = null;
+  pendingChosenColor = null;
+  pendingPlaySourceRect = null;
+  $("#color-modal").classList.add("hidden");
+  $("#swap-modal").classList.add("hidden");
+}
+
+$("#color-modal-cancel")?.addEventListener("click", cancelPendingPlay);
+$("#swap-modal-cancel")?.addEventListener("click", cancelPendingPlay);
+
+// Also let clicking the dark backdrop outside the modal box close it
+$("#color-modal")?.addEventListener("click", (e) => {
+  if (e.target.id === "color-modal") cancelPendingPlay();
+});
+$("#swap-modal")?.addEventListener("click", (e) => {
+  if (e.target.id === "swap-modal") cancelPendingPlay();
+});
+
+// Escape key closes it too
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") cancelPendingPlay();
+});
 
 document.querySelectorAll(".color-choice").forEach((btn) => {
   btn.addEventListener("click", () => {
