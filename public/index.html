@@ -44,6 +44,9 @@
       <label class="checkbox"><input type="checkbox" id="rule-jump" /> Jump-in (play an identical card out of turn)</label>
       <label class="checkbox"><input type="checkbox" id="rule-drawuntil" /> Draw until playable</label>
       <label class="checkbox"><input type="checkbox" id="rule-play-after-draw" /> Allow play after drawing (also after +2/+4)</label>
+      <label class="checkbox"><input type="checkbox" id="rule-plus8" /> Add 4 Wild +8 cards</label>
+      <label class="checkbox"><input type="checkbox" id="rule-passnext" /> Add "Pass Hand to Next" cards</label>
+      <label class="checkbox"><input type="checkbox" id="rule-swapany" /> Add "Swap Hands with Any Player" cards</label>
 
       <button id="btn-create" class="primary">Create Room</button>
     </div>
@@ -82,6 +85,7 @@
       </div>
       <div class="pile discard" id="discard-pile"></div>
       <div id="turn-indicator" class="turn-indicator"></div>
+      <div id="game-info" class="game-info hidden"></div>
     </div>
 
     <div class="hand-area">

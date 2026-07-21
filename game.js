@@ -16,6 +16,21 @@ function normalizeStackingMode(rules) {
   return "off";
 }
 
+function isDrawCardType(type) {
+  return type === "draw2" || type === "wild4" || type === "wild8";
+}
+
+function drawValue(type) {
+  if (type === "draw2") return 2;
+  if (type === "wild4") return 4;
+  if (type === "wild8") return 8;
+  return 0;
+}
+
+function needsChosenColor(type) {
+  return type === "wild" || type === "wild4" || type === "wild8" || type === "passnext" || type === "swapany";
+}
+
 class Room {
   constructor(code, hostName, rules) {
     this.code = code;
@@ -25,7 +40,7 @@ class Room {
     this.currentColor = null;
     this.currentIndex = 0;
     this.direction = 1; // 1 = clockwise (in join order), -1 = reverse
-    this.drawStack = 0; // pending +2/+4 to be resolved (stacking rule)
+    this.drawStack = 0; // pending draw penalties (+2/+4/+8) to be resolved
     this.started = false;
     this.winner = null;
     this.unoCalled = {}; // playerId -> bool, true once they've called UNO at 1 card
@@ -38,6 +53,9 @@ class Room {
         jumpIn: false, // play an exact match out of turn
         drawUntilPlayable: false, // must keep drawing until you can play (off = draw one, then pass)
         playAfterDraw: false, // after drawing (including +2/+4), you may play instead of auto-pass
+        plus8Cards: false, // add 4 wild +8 cards
+        passNextCard: false, // add "pass hand to next" cards
+        swapAnyCard: false, // add "swap with anyone" cards
       },
       rules || {}
     );
@@ -66,13 +84,13 @@ class Room {
 
   start() {
     if (this.players.length < MIN_PLAYERS) throw new Error("Need at least 2 players");
-    this.deck = shuffle(buildDeck());
+    this.deck = shuffle(buildDeck(this.rules));
     for (const p of this.players) {
       p.hand = this.draw(7);
     }
     // Flip first colored card to start the discard pile (wilds are reshuffled back in).
     let first = this.deck.pop();
-    while (first.type === "wild4" || first.type === "wild") {
+    while (needsChosenColor(first.type)) {
       this.deck.unshift(first);
       first = this.deck.pop();
     }
@@ -93,7 +111,7 @@ class Room {
   _applyStartCardEffect(card) {
     if (card.type === "reverse") this.direction *= -1;
     if (card.type === "skip") this.currentIndex = this.nextIndex();
-    if (card.type === "draw2") this.drawStack = 2;
+    if (isDrawCardType(card.type)) this.drawStack = drawValue(card.type);
   }
 
   draw(n) {
@@ -133,20 +151,20 @@ class Room {
   canPlay(card) {
     const top = this.topCard();
     const stackingMode = this.rules.stackingMode;
-    if (card.type === "wild" || card.type === "wild4") {
+    if (needsChosenColor(card.type)) {
       if (this.drawStack > 0 && stackingMode !== "off") {
-        if (stackingMode === "loose") return card.type === "wild4"; // only wild4 stacks on a draw pile
-        return card.type === top.type && card.type === "wild4";
+        if (!isDrawCardType(card.type)) return false;
+        if (stackingMode === "loose") return true;
+        return card.type === top.type;
       }
       return true;
     }
     if (this.drawStack > 0 && stackingMode !== "off") {
+      if (!isDrawCardType(card.type)) return false;
       if (stackingMode === "loose") {
-        // Loose stacking: draw2 on draw2, wild4 on any draw pile.
-        return card.type === "draw2" || card.type === "wild4";
+        return true;
       }
-      // Strict stacking: draw2 only on draw2, wild4 only on wild4.
-      return card.type === top.type && (card.type === "draw2" || card.type === "wild4");
+      return card.type === top.type;
     }
     if (card.color === this.currentColor) return true;
     if (card.type === "number" && top.type === "number") return card.value === top.value;
@@ -169,8 +187,8 @@ class Room {
     const card = player.hand[cardIdx];
     const chosenColor = card.color || options.chosenColor;
 
-    if ((card.type === "wild" || card.type === "wild4") && !chosenColor) {
-      throw new Error("Must choose a color for a wild card");
+    if (needsChosenColor(card.type) && !chosenColor) {
+      throw new Error("Must choose a color for this card");
     }
 
     if (!isMyTurn) {
@@ -216,26 +234,16 @@ class Room {
         // In a 2-player game, reverse also acts like a skip (same net effect either way).
         this.currentIndex = this.nextIndex();
         break;
-      case "draw2": {
+      case "draw2":
+      case "wild4":
+      case "wild8": {
         this.currentIndex = this.nextIndex();
         if (this.rules.stacking) {
-          this.drawStack += 2;
+          this.drawStack += drawValue(card.type);
         } else {
           const victim = this.currentPlayer();
-          victim.hand.push(...this.draw(2));
-          events.push({ type: "draw", playerId: victim.id, count: 2 });
-          this.currentIndex = this.nextIndex();
-        }
-        break;
-      }
-      case "wild4": {
-        this.currentIndex = this.nextIndex();
-        if (this.rules.stacking) {
-          this.drawStack += 4;
-        } else {
-          const victim = this.currentPlayer();
-          victim.hand.push(...this.draw(4));
-          events.push({ type: "draw", playerId: victim.id, count: 4 });
+          victim.hand.push(...this.draw(drawValue(card.type)));
+          events.push({ type: "draw", playerId: victim.id, count: drawValue(card.type) });
           this.currentIndex = this.nextIndex();
         }
         break;
@@ -243,6 +251,27 @@ class Room {
       case "wild":
         this.currentIndex = this.nextIndex();
         break;
+      case "passnext": {
+        const nextIdx = this.nextIndex();
+        const nextPlayer = this.players[nextIdx];
+        const tmp = nextPlayer.hand;
+        nextPlayer.hand = player.hand;
+        player.hand = tmp;
+        events.push({ type: "passnext", fromPlayerId: playerId, toPlayerId: nextPlayer.id });
+        this.currentIndex = this.nextIndex();
+        break;
+      }
+      case "swapany": {
+        const targetId = options.swapTargetId;
+        const target = this.players.find((p) => p.id === targetId && p.id !== playerId);
+        if (!target) throw new Error("Choose a player to swap hands with");
+        const tmp = target.hand;
+        target.hand = player.hand;
+        player.hand = tmp;
+        events.push({ type: "swap", withPlayerId: target.id, playerId });
+        this.currentIndex = this.nextIndex();
+        break;
+      }
       case "number":
         if (this.rules.sevenORule && card.value === 7) {
           const targetId = options.swapTargetId;
@@ -329,6 +358,14 @@ class Room {
 
   _hasPlayableCard(player) {
     return player.hand.some((card) => this.canPlay(card));
+  }
+
+  callUno(playerId) {
+    const player = this._requirePlayer(playerId);
+    if (this.winner) throw new Error("Game already over");
+    if (player.hand.length !== 1) throw new Error("You can only call UNO with exactly 1 card");
+    this.unoCalled[playerId] = true;
+    return [{ type: "unoCalled", playerId }];
   }
 
   /** Catch a player who forgot to call UNO at 1 card. They draw 2 as a penalty. */

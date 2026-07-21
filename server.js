@@ -153,6 +153,19 @@ io.on("connection", (socket) => {
     }
   });
 
+  socket.on("callUno", (_, cb) => {
+    try {
+      const room = rooms.get(currentRoomCode);
+      if (!room) throw new Error("Room not found");
+      const events = room.callUno(currentPlayerId);
+      cb({ ok: true });
+      broadcastState(room);
+      io.to(currentRoomCode).emit("events", events);
+    } catch (err) {
+      cb({ ok: false, error: err.message });
+    }
+  });
+
   socket.on("chat", ({ text }) => {
     const room = rooms.get(currentRoomCode);
     if (!room) return;

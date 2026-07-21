@@ -344,6 +344,31 @@ button.primary:active {
   border-radius: 20px;
   backdrop-filter: blur(4px);
 }
+.game-info {
+  margin-top: 8px;
+  min-height: 22px;
+  padding: 6px 12px;
+  border-radius: 12px;
+  font-size: 13px;
+  font-weight: 600;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.08);
+}
+.game-info.error {
+  color: #ffb4b4;
+  border-color: rgba(230, 52, 43, 0.7);
+  background: rgba(230, 52, 43, 0.15);
+}
+.game-info.warn {
+  color: #ffe29b;
+  border-color: rgba(242, 194, 41, 0.6);
+  background: rgba(242, 194, 41, 0.15);
+}
+.game-info.success {
+  color: #cbffd8;
+  border-color: rgba(47, 168, 79, 0.6);
+  background: rgba(47, 168, 79, 0.14);
+}
 
 #fx-layer {
   position: absolute;
@@ -487,6 +512,22 @@ button.primary:active {
 .hand .card.unplayable:hover {
   transform: scale(0.92);
 }
+.hand .card.jumpin-ready {
+  cursor: pointer;
+  opacity: 1;
+  filter: none;
+  transform: scale(1);
+  border-color: var(--yellow);
+  box-shadow: 0 0 14px rgba(242, 194, 41, 0.7);
+  animation: jumpin-hint 0.9s infinite alternate;
+}
+.hand .card.jumpin-ready:hover {
+  transform: translateY(-10px) scale(1.05);
+}
+@keyframes jumpin-hint {
+  0% { box-shadow: 0 0 10px rgba(242, 194, 41, 0.5); }
+  100% { box-shadow: 0 0 18px rgba(242, 194, 41, 0.9); }
+}
 
 .actions {
   display: flex;
@@ -509,6 +550,9 @@ button.primary:active {
 .uno-btn:hover {
   filter: brightness(1.15);
   transform: scale(1.05);
+}
+.uno-btn.armed {
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.75), 0 0 20px rgba(230, 52, 43, 0.8);
 }
 
 /* Side Panel (Log & Chat) */

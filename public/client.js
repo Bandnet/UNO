@@ -4,8 +4,11 @@ let myPlayerId = null;
 let roomCode = null;
 let latestState = null;
 let pendingCardId = null; // card awaiting a color choice or swap target
+let pendingChosenColor = null;
 let pendingPlaySourceRect = null;
 let canPassAfterDraw = false;
+let infoTimer = null;
+let unoArmed = false;
 
 const $ = (sel) => document.querySelector(sel);
 const show = (id) => document.querySelectorAll(".screen").forEach((s) => s.classList.toggle("hidden", s.id !== id));
@@ -30,6 +33,9 @@ $("#btn-create").addEventListener("click", () => {
     jumpIn: $("#rule-jump").checked,
     drawUntilPlayable: $("#rule-drawuntil").checked,
     playAfterDraw: $("#rule-play-after-draw").checked,
+    plus8Cards: $("#rule-plus8").checked,
+    passNextCard: $("#rule-passnext").checked,
+    swapAnyCard: $("#rule-swapany").checked,
   };
   socket.emit("createRoom", { name, rules }, (res) => {
     if (!res.ok) return ($("#lobby-error").textContent = res.error);
@@ -54,12 +60,12 @@ $("#btn-join").addEventListener("click", () => {
 
 $("#btn-start").addEventListener("click", () => {
   socket.emit("startGame", {}, (res) => {
-    if (!res.ok) alert(res.error);
+    if (!res.ok) showInfo(res.error, "error");
   });
 });
 $("#btn-pass").addEventListener("click", () => {
   socket.emit("passTurn", {}, (res) => {
-    if (!res.ok) alert(res.error);
+    if (!res.ok) showInfo(res.error, "error");
     canPassAfterDraw = false;
   });
 });
@@ -80,6 +86,24 @@ function clearSession() {
   sessionStorage.removeItem("uno_code");
   sessionStorage.removeItem("uno_pid");
 }
+
+function showInfo(text, type = "info", timeoutMs = 2200) {
+  const el = $("#game-info");
+  if (!el) return;
+  el.textContent = text;
+  el.classList.remove("hidden", "error", "success", "warn");
+  el.classList.add(type);
+  if (infoTimer) clearTimeout(infoTimer);
+  infoTimer = setTimeout(() => {
+    el.classList.add("hidden");
+  }, timeoutMs);
+}
+
+function setUnoArmed(active) {
+  unoArmed = active;
+  const btn = $("#btn-uno");
+  if (btn) btn.classList.toggle("armed", !!active);
+}
 (function tryRejoin() {
   const code = sessionStorage.getItem("uno_code");
   const pid = sessionStorage.getItem("uno_pid");
@@ -98,7 +122,10 @@ function clearSession() {
 // ---------- Server state ----------
 socket.on("state", (state) => {
   latestState = state;
-  if (state.currentPlayerId !== myPlayerId) canPassAfterDraw = false;
+  if (state.currentPlayerId !== myPlayerId) {
+    canPassAfterDraw = false;
+    setUnoArmed(false);
+  }
   if (!state.started) {
     show("screen-waiting");
     $("#wait-code").textContent = state.code;
@@ -118,6 +145,7 @@ socket.on("events", (events) => {
     }
     if (e.type === "turnAdvance") {
       canPassAfterDraw = false;
+      setUnoArmed(false);
     }
     logEvent(e);
     animateEvent(e);
@@ -153,7 +181,9 @@ function logEvent(e) {
     case "draw": text = `${nameOf(e.playerId)} drew ${e.count} card(s)`; break;
     case "skip": text = `${nameOf(e.skippedPlayerId)} was skipped`; break;
     case "swap": text = `${nameOf(e.playerId)} swapped hands with ${nameOf(e.withPlayerId)}`; break;
+    case "passnext": text = `${nameOf(e.fromPlayerId)} passed hands to ${nameOf(e.toPlayerId)}`; break;
     case "rotateHands": text = `Everyone passed their hand!`; break;
+    case "unoCalled": text = `${nameOf(e.playerId)} called UNO!`; break;
     case "win": text = `🎉 ${nameOf(e.playerId)} wins!`; break;
     case "unoCaught": text = `${nameOf(e.targetId)} got caught without calling UNO! +2 cards`; break;
     default: return;
@@ -179,12 +209,15 @@ function myName() {
 function cardLabel(card) {
   if (card.type === "wild") return "Wild";
   if (card.type === "wild4") return "Wild +4";
+  if (card.type === "wild8") return "Wild +8";
+  if (card.type === "passnext") return "Pass Next";
+  if (card.type === "swapany") return "Swap Hands";
   if (card.type === "number") return `${card.color} ${card.value}`;
   return `${card.color} ${card.type}`;
 }
 
 function cardClass(card) {
-  if (card.type === "wild" || card.type === "wild4") return "wildcard";
+  if (card.type === "wild" || card.type === "wild4" || card.type === "wild8" || card.type === "passnext" || card.type === "swapany") return "wildcard";
   return card.color;
 }
 
@@ -196,6 +229,9 @@ function cardInnerHtml(card) {
   else if (card.type === "draw2") main = "+2";
   else if (card.type === "wild") main = "★";
   else if (card.type === "wild4") main = "+4";
+  else if (card.type === "wild8") main = "+8";
+  else if (card.type === "passnext") main = "⇢";
+  else if (card.type === "swapany") main = "↔";
   return `<span>${main}</span>`;
 }
 
@@ -237,6 +273,9 @@ function renderGame(state) {
   $("#turn-indicator").textContent = state.drawStack > 0
     ? `Draw pile: +${state.drawStack} — ${isMyTurn ? "your turn" : (currentPlayer ? currentPlayer.name + "'s turn" : "")}`
     : isMyTurn ? "Your turn!" : `${currentPlayer ? currentPlayer.name : "..."}'s turn`;
+  if (!isMyTurn && state.rules.jumpIn && hasJumpInCard(me.hand || [], state)) {
+    $("#turn-indicator").textContent += " — jump-in ready!";
+  }
 
   // My hand
   $("#my-name").textContent = me.name + " (you)";
@@ -244,7 +283,8 @@ function renderGame(state) {
   $("#hand").innerHTML = hand
     .map((c) => {
       const playable = isMyTurn && canPlayLocally(c, state);
-      return `<div class="card ${cardClass(c)} ${playable ? "" : "unplayable"}" data-card-id="${c.id}">${cardInnerHtml(c)}</div>`;
+      const jumpInReady = !isMyTurn && state.rules.jumpIn && canJumpInLocally(c, state);
+      return `<div class="card ${cardClass(c)} ${playable ? "" : "unplayable"} ${jumpInReady ? "jumpin-ready" : ""}" data-card-id="${c.id}">${cardInnerHtml(c)}</div>`;
     })
     .join("");
 
@@ -301,29 +341,50 @@ function colorHex(c) {
 // Best-effort local playability check so unplayable cards are visibly dimmed.
 // The server is the source of truth and re-validates every move.
 function canPlayLocally(card, state) {
+  const top = state.topCard;
+  if (!top) return true;
   const stackingMode = (state.rules && state.rules.stackingMode) || (state.rules && state.rules.stacking ? "loose" : "off");
-  if (card.type === "wild" || card.type === "wild4") {
-   if (state.drawStack > 0 && stackingMode !== "off") {
-     if (stackingMode === "loose") return card.type === "wild4";
-     return state.topCard && card.type === state.topCard.type && card.type === "wild4";
+  if (isWildLikeType(card.type)) {
+   if (state.drawStack > 0) {
+     if (!isDrawType(card.type) || stackingMode === "off") return false;
+     if (stackingMode === "loose") return true;
+     return card.type === top.type;
    }
    return true;
   }
-  if (state.drawStack > 0 && stackingMode !== "off") {
-   if (stackingMode === "loose") return card.type === "draw2" || card.type === "wild4";
-   return state.topCard && card.type === state.topCard.type && (card.type === "draw2" || card.type === "wild4");
+  if (state.drawStack > 0) {
+   if (!isDrawType(card.type) || stackingMode === "off") return false;
+   if (stackingMode === "loose") return true;
+   return card.type === top.type;
   }
-  const top = state.topCard;
   if (card.color === state.currentColor) return true;
   if (card.type === "number" && top.type === "number") return card.value === top.value;
   if (card.type !== "number" && card.type === top.type) return true;
   return false;
 }
 
+function isDrawType(type) {
+  return type === "draw2" || type === "wild4" || type === "wild8";
+}
+
+function isWildLikeType(type) {
+  return type === "wild" || type === "wild4" || type === "wild8" || type === "passnext" || type === "swapany";
+}
+
+function canJumpInLocally(card, state) {
+  const top = state.topCard;
+  if (!top) return false;
+  return card.color === top.color && card.type === top.type && card.value === top.value;
+}
+
+function hasJumpInCard(hand, state) {
+  return hand.some((card) => canJumpInLocally(card, state));
+}
+
 // ---------- Playing a card ----------
 $("#deck-pile").addEventListener("click", () => {
   socket.emit("drawCard", {}, (res) => {
-    if (!res.ok) alert(res.error);
+    if (!res.ok) showInfo(res.error, "error");
   });
 });
 
@@ -333,14 +394,26 @@ function onPlayCardClick(cardId, state) {
   const card = (me.hand || []).find((c) => c.id === cardId);
   if (!card) return;
   if (!isMyTurn && !state.rules.jumpIn) return;
+  pendingChosenColor = null;
+  if (!isMyTurn && state.rules.jumpIn && !canJumpInLocally(card, state)) {
+    showInfo("Jump-in only works with an identical card.", "warn");
+    return;
+  }
+  if (isMyTurn && !canPlayLocally(card, state)) {
+    showInfo("You can't play that card right now.", "warn");
+    return;
+  }
   rememberPendingPlay(cardId);
 
-  if (card.type === "wild" || card.type === "wild4") {
+  if (isWildLikeType(card.type)) {
     pendingCardId = cardId;
     $("#color-modal").classList.remove("hidden");
     return;
   }
-  if (state.rules.sevenORule && card.type === "number" && card.value === 7 && state.players.length > 1) {
+  if (
+    ((state.rules.sevenORule && card.type === "number" && card.value === 7) || card.type === "swapany") &&
+    state.players.length > 1
+  ) {
     pendingCardId = cardId;
     const others = state.players.filter((p) => p.id !== myPlayerId);
     $("#swap-choices").innerHTML = others
@@ -361,7 +434,24 @@ function onPlayCardClick(cardId, state) {
 document.querySelectorAll(".color-choice").forEach((btn) => {
   btn.addEventListener("click", () => {
     $("#color-modal").classList.add("hidden");
-    submitPlay(pendingCardId, { chosenColor: btn.dataset.color });
+    pendingChosenColor = btn.dataset.color;
+    const me = latestState.players.find((p) => p.id === myPlayerId);
+    const pendingCard = me && (me.hand || []).find((c) => c.id === pendingCardId);
+    if (pendingCard && pendingCard.type === "swapany") {
+      const others = latestState.players.filter((p) => p.id !== myPlayerId);
+      $("#swap-choices").innerHTML = others
+        .map((p) => `<button data-target="${p.id}">${escapeHtml(p.name)}</button>`)
+        .join("");
+      document.querySelectorAll("#swap-choices button").forEach((b) => {
+        b.addEventListener("click", () => {
+          $("#swap-modal").classList.add("hidden");
+          submitPlay(pendingCardId, { chosenColor: pendingChosenColor, swapTargetId: b.dataset.target });
+        });
+      });
+      $("#swap-modal").classList.remove("hidden");
+      return;
+    }
+    submitPlay(pendingCardId, { chosenColor: pendingChosenColor });
   });
 });
 
@@ -370,13 +460,15 @@ function submitPlay(cardId, options) {
   const calledUno = me.hand.length === 2; // about to have exactly 1 left
   socket.emit("playCard", { cardId, ...options, calledUno: calledUno && unoArmed }, (res) => {
     if (!res.ok) {
-      alert(res.error);
+      showInfo(res.error, "error");
       pendingPlaySourceRect = null;
       pendingCardId = null;
+      pendingChosenColor = null;
     } else {
       canPassAfterDraw = false;
+      pendingChosenColor = null;
     }
-    unoArmed = false;
+    setUnoArmed(false);
   });
 }
 
@@ -489,18 +581,35 @@ function startConfettiCelebration() {
 }
 
 // ---------- UNO button ----------
-let unoArmed = false;
 $("#btn-uno").addEventListener("click", () => {
-  unoArmed = true;
+  const me = latestState && (latestState.players || []).find((p) => p.id === myPlayerId);
+  if (!me) return;
+
+  setUnoArmed(true);
   $("#btn-uno").style.filter = "brightness(1.4)";
   setTimeout(() => ($("#btn-uno").style.filter = ""), 400);
 
-  // Also usable to CATCH an opponent sitting at 1 card without having called it.
+  if (me.handCount === 1) {
+    socket.emit("callUno", {}, (res) => {
+      if (!res.ok) showInfo(res.error, "warn");
+      else showInfo("UNO called!", "success", 1600);
+    });
+    return;
+  }
+
+  if (me.handCount === 2) {
+    showInfo("UNO armed for your next play.", "success", 1500);
+  }
+
+  // Also usable to catch an opponent sitting at 1 card without having called it.
   const target = (latestState.players || []).find(
     (p) => p.id !== myPlayerId && p.handCount === 1
   );
   if (target) {
-    socket.emit("catchUno", { targetId: target.id }, () => {});
+    socket.emit("catchUno", { targetId: target.id }, (res) => {
+      if (!res.ok) showInfo(res.error, "warn");
+      else showInfo(`Caught ${target.name} without UNO!`, "success", 1700);
+    });
   }
 });
 

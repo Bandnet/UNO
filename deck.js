@@ -5,13 +5,15 @@
 const COLORS = ["red", "yellow", "green", "blue"];
 
 /**
- * Builds one fresh, standard 108-card UNO deck.
+ * Builds one fresh UNO deck with optional modifier cards.
  * Each card is an object: { id, color, type, value }
- *   type: "number" | "skip" | "reverse" | "draw2" | "wild" | "wild4"
+ *   type:
+ *     "number" | "skip" | "reverse" | "draw2" |
+ *     "wild" | "wild4" | "wild8" | "passnext" | "swapany"
  *   value: 0-9 for number cards, null otherwise
  *   color: one of COLORS for colored cards, null for wild/wild4 (until chosen)
  */
-function buildDeck() {
+function buildDeck(rules = {}) {
   const cards = [];
   let uid = 0;
 
@@ -31,8 +33,11 @@ function buildDeck() {
 
   push(null, "wild", null, 4);
   push(null, "wild4", null, 4);
+  if (rules.plus8Cards) push(null, "wild8", null, 4);
+  if (rules.passNextCard) push(null, "passnext", null, 4);
+  if (rules.swapAnyCard) push(null, "swapany", null, 4);
 
-  return cards; // 108 cards total
+  return cards;
 }
 
 function shuffle(array) {
@@ -49,6 +54,9 @@ function cardLabel(card) {
   if (!card) return "?";
   if (card.type === "wild") return "Wild";
   if (card.type === "wild4") return "Wild Draw Four";
+  if (card.type === "wild8") return "Wild Draw Eight";
+  if (card.type === "passnext") return "Pass Hand to Next";
+  if (card.type === "swapany") return "Swap Hands";
   if (card.type === "number") return `${card.color} ${card.value}`;
   return `${card.color} ${card.type}`;
 }
