@@ -31,24 +31,6 @@ function needsChosenColor(type) {
   return type === "wild" || type === "wild4" || type === "wild8" || type === "passnext" || type === "swapany";
 }
 
-const colorModal = document.getElementById('color-modal');
-const closeColorModalBtn = document.getElementById('close-color-modal');
-
-// Function to close the color picker modal
-function hideColorModal() {
-  colorModal.classList.add('hidden');
-}
-
-// 1. Close modal on "Cancel" button click
-closeColorModalBtn.addEventListener('click', hideColorModal);
-
-// 2. Close modal when clicking on the dark backdrop background
-colorModal.addEventListener('click', (e) => {
-  if (e.target === colorModal) {
-    hideColorModal();
-  }
-});
-
 class Room {
   constructor(code, hostName, rules) {
     this.code = code;
