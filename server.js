@@ -163,12 +163,15 @@ io.on("connection", (socket) => {
   socket.on("disconnect", () => {
     const room = rooms.get(currentRoomCode);
     if (!room) return;
+    const disconnectRoomCode = currentRoomCode;
     room.removePlayerBySocket(socket.id);
     broadcastState(room);
     // Clean up empty, unstarted rooms after a delay.
     setTimeout(() => {
-      const r = rooms.get(currentRoomCode);
-      if (r && r.players.every((p) => !p.connected)) rooms.delete(currentRoomCode);
+      const r = rooms.get(disconnectRoomCode);
+      if (r && !r.started && r.players.every((p) => !p.connected)) {
+        rooms.delete(disconnectRoomCode);
+      }
     }, 5 * 60 * 1000);
   });
 });
